@@ -1,0 +1,1139 @@
+<!DOCTYPE html><html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>천겁생존록 Prototype</title>
+<style>
+  *{box-sizing:border-box;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#05060a;color:#f8fafc;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Noto Sans KR",Arial,sans-serif}
+  canvas{display:block;width:100vw;height:100vh;background:#05060a;touch-action:none}
+  #ui{position:fixed;inset:0;pointer-events:none;color:#e0f2fe;font-weight:900;text-shadow:0 0 8px rgba(56,189,248,.75)}
+  #left{position:absolute;left:14px;top:14px;font-size:18px;line-height:1.5}
+  #right{position:absolute;right:14px;top:14px;text-align:right;font-size:15px;line-height:1.55}
+  #qiBox{position:absolute;left:14px;right:14px;top:82px;height:14px;background:#102010;border:1px solid #22c55e;border-radius:999px;overflow:hidden;box-shadow:0 0 14px rgba(34,197,94,.4) inset}
+  #qiBar{height:100%;width:0%;background:linear-gradient(90deg,#22c55e,#a3e635,#fefce8)}
+  #hpBox{position:absolute;left:14px;top:105px;width:172px;height:12px;background:#3b0a0a;border:1px solid #f87171;border-radius:999px;overflow:hidden}
+  #hpBar{height:100%;width:100%;background:linear-gradient(90deg,#ef4444,#f97316,#fde68a)}
+  #artifacts{position:absolute;left:12px;bottom:14px;max-width:66%;padding:9px 10px;border:1px solid rgba(148,163,184,.32);border-radius:14px;background:rgba(15,23,42,.62);font-size:12px;line-height:1.45;color:#f8fafc}
+  #toast{position:absolute;left:50%;top:32%;transform:translate(-50%,-50%);background:rgba(0,0,0,.78);border:1px solid rgba(255,255,255,.25);border-radius:14px;padding:12px 16px;font-size:18px;text-align:center;white-space:pre-line;opacity:0;transition:.18s;min-width:180px}
+  .overlay{position:fixed;inset:0;display:none;place-items:center;background:rgba(0,0,0,.78);z-index:10;pointer-events:auto;padding:14px}
+  .panel{width:min(94vw,460px);background:linear-gradient(180deg,#111827,#0f172a);border:1px solid #38bdf8;border-radius:22px;padding:18px;box-shadow:0 0 48px rgba(0,0,0,.8)}
+  .panel h1,.panel h2{text-align:center;margin:0 0 12px;color:#f8fafc}.panel p{margin:8px 0;color:#bfdbfe;line-height:1.58;font-weight:700}.btn,.choice{display:block;width:100%;margin:10px 0;padding:14px 15px;border-radius:15px;border:1px solid #38bdf8;background:#164e63;color:#fff;font-weight:900;font-size:15px}.btn:active,.choice:active{transform:scale(.985)}.choice{text-align:left;background:#1e293b}.choice small{display:block;color:#bfdbfe;margin-top:4px;font-weight:700}.evo{background:#78350f;border-color:#f59e0b}.danger{background:#581c87;border-color:#c084fc}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="ui">
+  <div id="left">
+    경지 <span id="realmText">연기 1성</span><br>
+    <span id="mainArtifact">⚔️ 비검 Lv.1</span><br>
+    <span style="font-size:13px">처치 <span id="killText">0</span></span>
+  </div>
+  <div id="right">
+    시간 <span id="timeText">0:00</span><br>
+    영기 <span id="qiText">0/6</span><br>
+    천겁 위험도 <span id="dangerText">1</span>
+  </div>
+  <div id="qiBox"><div id="qiBar"></div></div>
+  <div id="hpBox"><div id="hpBar"></div></div>
+  <div id="artifacts"></div>
+  <div id="toast"></div>
+</div><div id="menu" class="overlay">
+  <div class="panel">
+    <h1>천겁생존록</h1>
+    <p>선협 기반 뱀서라이크 프로토타입.</p>
+    <p>왼쪽 아래 조이스틱으로 이동한다. 법보는 자동으로 발동된다. 요수를 처치해 영기를 흡수하고, 법보를 승급시켜 천겁을 버텨라.</p>
+    <button class="btn" id="startBtn">비경 입장</button>
+  </div>
+</div><div id="levelPanel" class="overlay">
+  <div class="panel">
+    <h2>소경지 돌파</h2>
+    <div id="choices"></div>
+  </div>
+</div><div id="gameover" class="overlay">
+  <div class="panel">
+    <h2 id="overTitle">도행 붕괴</h2>
+    <p id="result"></p>
+    <button class="btn" id="restartBtn">다시 입장</button>
+  </div>
+</div><script>
+(() => {
+'use strict';
+
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+
+const el = {
+  menu: document.getElementById('menu'),
+  levelPanel: document.getElementById('levelPanel'),
+  gameover: document.getElementById('gameover'),
+  choices: document.getElementById('choices'),
+  startBtn: document.getElementById('startBtn'),
+  restartBtn: document.getElementById('restartBtn'),
+  realmText: document.getElementById('realmText'),
+  mainArtifact: document.getElementById('mainArtifact'),
+  killText: document.getElementById('killText'),
+  timeText: document.getElementById('timeText'),
+  qiText: document.getElementById('qiText'),
+  dangerText: document.getElementById('dangerText'),
+  qiBar: document.getElementById('qiBar'),
+  hpBar: document.getElementById('hpBar'),
+  artifacts: document.getElementById('artifacts'),
+  toast: document.getElementById('toast'),
+  overTitle: document.getElementById('overTitle'),
+  result: document.getElementById('result')
+};
+
+let W = 0;
+let H = 0;
+let DPR = 1;
+let running = false;
+let paused = false;
+let last = performance.now();
+let keys = Object.create(null);
+let player;
+let cam;
+let time = 0;
+let kills = 0;
+let realmLevel = 1;
+let qi = 0;
+let qiNeed = 6;
+let owned;
+let evolutions;
+let passives;
+let timers;
+let beasts = [];
+let projectiles = [];
+let qiOrbs = [];
+let areas = [];
+let particles = [];
+let rings = [];
+let slashWaves = [];
+let levelChoices = [];
+let tribulationStarted = false;
+let bossSpawned = false;
+
+const joy = {
+  baseX: 92,
+  baseY: 520,
+  x: 92,
+  y: 520,
+  dx: 0,
+  dy: 0,
+  active: false,
+  id: null,
+  radius: 70,
+  knob: 32
+};
+
+const realms = ['연기','축기','금단','원영','화신','연허','합체','대승','도겁','진선'];
+
+const artifactData = {
+  sword: { icon:'⚔️', name:'비검', kind:'검', desc:'가장 가까운 요수를 향해 날아가는 기본 법보.' },
+  thunder: { icon:'⚡', name:'청뢰부', kind:'뇌', desc:'무작위 요수 위치에 낙뢰를 떨어뜨린다.' },
+  flame: { icon:'🔥', name:'혈염주', kind:'화', desc:'불꽃 구슬이 적을 추적하며 폭발한다.' },
+  ice: { icon:'❄️', name:'한빙침', kind:'빙', desc:'얼음 침을 흩뿌려 적을 둔화시킨다.' },
+  array: { icon:'☯️', name:'태극진', kind:'진법', desc:'주변에 진법을 펼쳐 접근한 적을 태운다.' },
+  puppet: { icon:'🧿', name:'목갑괴뢰', kind:'괴뢰', desc:'괴뢰가 영탄을 자동 발사한다.' },
+  poison: { icon:'☠️', name:'독혼번', kind:'독', desc:'독 안개를 생성해 지속 피해를 입힌다.' },
+  jade: { icon:'🛡️', name:'호신옥패', kind:'호신', desc:'일정 주기마다 피해를 막는 보호막을 만든다.' }
+};
+
+const passiveData = {
+  swordArt: { icon:'📜', name:'청운검결', desc:'검계 법보 강화.' },
+  thunderArt: { icon:'📘', name:'구천뇌법', desc:'뇌계 법보 강화.' },
+  flameArt: { icon:'📕', name:'혈마심경', desc:'화계/마도 법보 강화.' },
+  iceArt: { icon:'📗', name:'빙심결', desc:'빙계 법보 강화.' },
+  arrayArt: { icon:'📙', name:'태상진해', desc:'진법 범위 강화.' },
+  puppetArt: { icon:'⚙️', name:'천기괴뢰술', desc:'괴뢰계 법보 강화.' },
+  absorbArt: { icon:'🌌', name:'흡령대법', desc:'영기 흡수 범위 증가.' },
+  bodyArt: { icon:'💪', name:'금강불괴공', desc:'체력과 생존력 증가.' }
+};
+
+const evolutionData = [
+  { need:['sword','swordArt'], key:'tenThousandSwords', icon:'🌌', name:'만검귀종', desc:'수십 자루의 검광이 전장을 가른다.' },
+  { need:['thunder','thunderArt'], key:'nineThunder', icon:'🌩️', name:'구천신뢰부', desc:'낙뢰가 요수 사이를 연쇄 전이한다.' },
+  { need:['flame','flameArt'], key:'bloodFlameWheel', icon:'☀️', name:'혈해염륜', desc:'혈염의 고리가 주변을 회전한다.' },
+  { need:['ice','iceArt'], key:'deepIceNeedle', icon:'🧊', name:'만년현빙침', desc:'한빙 폭풍으로 적을 묶는다.' },
+  { need:['array','arrayArt'], key:'yinYangArray', icon:'☯️', name:'양의진천도', desc:'대형 태극진이 주변을 지배한다.' },
+  { need:['puppet','puppetArt'], key:'heavenPuppet', icon:'🤖', name:'천기전투괴뢰', desc:'대형 괴뢰가 전장을 지원한다.' },
+  { need:['poison','absorbArt'], key:'tenPoisonBanner', icon:'🟢', name:'만독혼번', desc:'독이 전염되며 요수를 갉아먹는다.' },
+  { need:['jade','bodyArt'], key:'heavenGuardJade', icon:'🛡️', name:'천강호신패', desc:'호신막 파괴 시 충격파와 회복을 일으킨다.' }
+];
+
+function rand(a,b){ return Math.random() * (b - a) + a; }
+function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+function distance(ax,ay,bx,by){ return Math.hypot(ax - bx, ay - by); }
+function fmt(t){ t = Math.floor(t); return Math.floor(t/60) + ':' + String(t%60).padStart(2,'0'); }
+function screen(x,y){ return { x: x - cam.x + W/2, y: y - cam.y + H/2 }; }
+function danger(){ return 1 + Math.floor(time / 22) + Math.floor(realmLevel / 7); }
+function realmName(){ const major = Math.floor((realmLevel - 1) / 9); const minor = ((realmLevel - 1) % 9) + 1; return `${realms[Math.min(major, realms.length - 1)]} ${minor}성`; }
+function hasEvolution(key){ return !!evolutions[key]; }
+
+function showToast(msg){
+  el.toast.textContent = msg;
+  el.toast.style.opacity = '1';
+  clearTimeout(showToast._timer);
+  showToast._timer = setTimeout(() => { el.toast.style.opacity = '0'; }, 900);
+}
+
+function resize(){
+  DPR = Math.min(window.devicePixelRatio || 1, 1.5);
+  W = innerWidth;
+  H = innerHeight;
+  canvas.width = Math.floor(W * DPR);
+  canvas.height = Math.floor(H * DPR);
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  joy.baseX = 92;
+  joy.baseY = H - 102;
+  joy.x = joy.baseX;
+  joy.y = joy.baseY;
+}
+
+function resetGame(){
+  player = {
+    x: 0,
+    y: 0,
+    r: 18,
+    hp: 140,
+    maxHp: 140,
+    speed: 255,
+    angle: 0,
+    inv: 0,
+    shield: 0,
+    jadeCooldown: 0,
+    absorb: 175
+  };
+  cam = { x:0, y:0, shake:0 };
+  time = 0;
+  kills = 0;
+  realmLevel = 1;
+  qi = 0;
+  qiNeed = 6;
+  owned = { sword:1, thunder:1 };
+  passives = {};
+  evolutions = {};
+  timers = {
+    spawn: 0,
+    sword: 0,
+    thunder: 0,
+    flame: 0,
+    ice: 0,
+    array: 0,
+    puppet: 0,
+    poison: 0,
+    jade: 0,
+    tribulation: 0
+  };
+  beasts = [];
+  projectiles = [];
+  qiOrbs = [];
+  areas = [];
+  particles = [];
+  rings = [];
+  slashWaves = [];
+  tribulationStarted = false;
+  bossSpawned = false;
+  for(let i=0;i<20;i++) spawnBeast(false);
+  updateUI();
+}
+
+function startGame(){
+  el.menu.style.display = 'none';
+  el.levelPanel.style.display = 'none';
+  el.gameover.style.display = 'none';
+  resetGame();
+  running = true;
+  paused = false;
+  showToast('비경 입장');
+}
+
+function spawnBeast(boss=false){
+  const max = W < 700 ? 190 : 280;
+  if(beasts.length > max && !boss) return;
+  const side = Math.floor(rand(0,4));
+  const margin = Math.max(W,H) * .58 + 160;
+  let x = player.x;
+  let y = player.y;
+  if(side === 0){ x += rand(-W/2,W/2); y -= margin; }
+  if(side === 1){ x += rand(-W/2,W/2); y += margin; }
+  if(side === 2){ x -= margin; y += rand(-H/2,H/2); }
+  if(side === 3){ x += margin; y += rand(-H/2,H/2); }
+
+  const elite = !boss && Math.random() < Math.min(.18, time / 280);
+  const typeRoll = Math.random();
+  let type = 'bloodWolf';
+  if(typeRoll > .72) type = 'poisonBug';
+  if(typeRoll > .86) type = 'ghost';
+  if(typeRoll > .94) type = 'charger';
+  if(elite) type = ['ironOx','thunderSerpent','demonCultivator','shadowFiend'][Math.floor(rand(0,4))];
+  if(boss) type = 'blackMountainKing';
+
+  const baseHp = 7 + danger() * 3 + time / 11;
+  const hpMul = boss ? 95 : elite ? 7 : type === 'ironOx' ? 4 : type === 'poisonBug' ? .65 : 1;
+  const r = boss ? 54 : elite ? 27 : type === 'poisonBug' ? 13 : 18;
+  const speedMul = boss ? .45 : type === 'charger' ? 1.65 : type === 'ironOx' ? .65 : 1;
+  const hp = baseHp * hpMul;
+
+  beasts.push({
+    x,y,r,type,
+    hp,maxHp:hp,
+    speed:(70 + Math.min(135, time * 1.15)) * speedMul,
+    boss,elite,
+    hit:0,
+    slow:0,
+    poison:0,
+    bind:0,
+    chargeTimer: rand(.4,1.4),
+    shootTimer: rand(1.2,2.4),
+    dead:false
+  });
+}
+
+function addQiOrb(x,y,value=1){
+  qiOrbs.push({ x,y,r:7,value,spin:rand(0,Math.PI*2),dead:false });
+}
+
+function addParticle(x,y,color,count=10,power=180){
+  const limit = W < 700 ? 320 : 520;
+  for(let i=0;i<count && particles.length<limit;i++){
+    const a = rand(0,Math.PI*2);
+    const s = rand(power*.2,power);
+    particles.push({
+      x,y,
+      vx:Math.cos(a)*s,
+      vy:Math.sin(a)*s,
+      r:rand(2,5),
+      life:rand(.25,.72),
+      max:.72,
+      color
+    });
+  }
+}
+
+function addRing(x,y,color,r=90){
+  rings.push({ x,y,color,r,life:.38,max:.38 });
+}
+
+function addArea(x,y,r,life,dmg,type,extra={}){
+  areas.push({ x,y,r,life,max:life,dmg,type,...extra });
+}
+
+function nearestBeast(fromX=player.x, fromY=player.y){
+  let best = null;
+  let bestD = Infinity;
+  for(const b of beasts){
+    const d = distance(fromX,fromY,b.x,b.y);
+    if(d < bestD){ best = b; bestD = d; }
+  }
+  return best;
+}
+
+function shoot(type, angle, opt={}){
+  const limit = W < 700 ? 360 : 540;
+  if(projectiles.length > limit) return;
+  const sp = opt.speed || 620;
+  projectiles.push({
+    type,
+    x: opt.x ?? player.x + Math.cos(angle) * 25,
+    y: opt.y ?? player.y + Math.sin(angle) * 25,
+    vx: Math.cos(angle) * sp,
+    vy: Math.sin(angle) * sp,
+    r: opt.r || 7,
+    life: opt.life || 1.25,
+    dmg: opt.dmg || 3,
+    color: opt.color || '#e0f2fe',
+    homing: !!opt.homing,
+    pierce: opt.pierce || 0,
+    poison: opt.poison || 0,
+    slow: opt.slow || 0,
+    explode: opt.explode || 0,
+    fromEnemy: !!opt.fromEnemy
+  });
+}
+
+function gainQi(v){
+  qi += v;
+  while(qi >= qiNeed){
+    qi -= qiNeed;
+    realmLevel++;
+    qiNeed = Math.floor(qiNeed * 1.32 + 5);
+    openLevelUp();
+    if(paused) break;
+  }
+  updateUI();
+}
+
+function canMakeEvolution(evo){
+  const [artifact, passive] = evo.need;
+  return owned[artifact] >= 5 && passives[passive] && !evolutions[evo.key];
+}
+
+function openLevelUp(){
+  paused = true;
+  const pool = [];
+
+  for(const evo of evolutionData){
+    if(canMakeEvolution(evo)){
+      pool.push({ type:'evolution', evo, title:`${evo.icon} ${evo.name} 승급`, desc:evo.desc });
+    }
+  }
+
+  for(const key of Object.keys(artifactData)){
+    const data = artifactData[key];
+    if(!owned[key]){
+      pool.push({ type:'artifact', key, title:`${data.icon} ${data.name} 획득`, desc:data.desc });
+    }else if(owned[key] < 8){
+      pool.push({ type:'artifact', key, title:`${data.icon} ${data.name} Lv.${owned[key]+1}`, desc:`${data.kind}계 법보 강화` });
+    }
+  }
+
+  for(const key of Object.keys(passiveData)){
+    const data = passiveData[key];
+    if(!passives[key]){
+      pool.push({ type:'passive', key, title:`${data.icon} ${data.name} 습득`, desc:data.desc });
+    }
+  }
+
+  const rareChance = Math.random();
+  if(rareChance < .35){
+    pool.unshift({ type:'heal', title:'🍶 회춘단 복용', desc:'즉시 체력 35% 회복' });
+  }
+  if(rareChance > .72){
+    pool.unshift({ type:'speed', title:'👣 신행보 각성', desc:'이 판 동안 이동속도 +8%' });
+  }
+
+  levelChoices = pool.sort(() => Math.random() - .5).slice(0,3);
+  el.choices.innerHTML = levelChoices.map((p,i) => {
+    const cls = p.type === 'evolution' ? 'choice evo' : p.type === 'heal' || p.type === 'speed' ? 'choice danger' : 'choice';
+    return `<button class="${cls}" data-pick="${i}">${p.title}<small>${p.desc}</small></button>`;
+  }).join('');
+  el.levelPanel.style.display = 'grid';
+}
+
+function pickLevel(index){
+  const p = levelChoices[index];
+  if(!p) return;
+
+  if(p.type === 'evolution'){
+    evolutions[p.evo.key] = true;
+    addParticle(player.x,player.y,'#f59e0b',80,500);
+    addRing(player.x,player.y,'#f59e0b',230);
+    showToast(`${p.evo.icon} ${p.evo.name}\n법보 승급`);
+  }else if(p.type === 'artifact'){
+    owned[p.key] = (owned[p.key] || 0) + 1;
+    const d = artifactData[p.key];
+    showToast(`${d.icon} ${d.name}\nLv.${owned[p.key]}`);
+  }else if(p.type === 'passive'){
+    passives[p.key] = true;
+    showToast(`${passiveData[p.key].icon} ${passiveData[p.key].name}\n공법 습득`);
+  }else if(p.type === 'heal'){
+    player.hp = Math.min(player.maxHp, player.hp + player.maxHp * .35);
+    addParticle(player.x,player.y,'#22c55e',30,260);
+    showToast('회춘단 복용');
+  }else if(p.type === 'speed'){
+    player.speed *= 1.08;
+    addParticle(player.x,player.y,'#38bdf8',30,260);
+    showToast('신행보 각성');
+  }
+
+  paused = false;
+  el.levelPanel.style.display = 'none';
+  updateUI();
+}
+
+function artifactUpdate(dt){
+  const target = nearestBeast();
+  const angle = target ? Math.atan2(target.y - player.y, target.x - player.x) : player.angle;
+
+  if(owned.sword && (timers.sword -= dt) <= 0){
+    const lv = owned.sword;
+    const evolved = hasEvolution('tenThousandSwords');
+    const count = evolved ? 9 + Math.floor(lv/2) : 1 + Math.floor(lv/3);
+    for(let i=0;i<count;i++){
+      shoot('sword', angle + rand(-.55,.55), {
+        dmg: 4 + lv * 1.4,
+        speed: evolved ? 790 : 680,
+        r: evolved ? 8 : 6,
+        pierce: evolved ? 4 : Math.floor(lv/4),
+        color: evolved ? '#fef3c7' : '#bfdbfe',
+        homing: !evolved
+      });
+    }
+    timers.sword = evolved ? .13 : Math.max(.18, .48 - lv*.035);
+  }
+
+  if(owned.thunder && (timers.thunder -= dt) <= 0){
+    const lv = owned.thunder;
+    const evolved = hasEvolution('nineThunder');
+    const strikes = evolved ? 7 + lv : 1 + Math.floor(lv/2);
+    for(let i=0;i<strikes;i++){
+      const b = beasts[Math.floor(Math.random() * beasts.length)];
+      if(b){
+        const r = evolved ? 78 : 52 + lv*3;
+        addArea(b.x,b.y,r,.16, evolved ? 8 + lv : 5 + lv*.9, 'thunder');
+        addParticle(b.x,b.y,'#7dd3fc',12,260);
+        addRing(b.x,b.y,'#7dd3fc',r);
+      }
+    }
+    timers.thunder = evolved ? .38 : Math.max(.52, 1.05 - lv*.055);
+  }
+
+  if(owned.flame && (timers.flame -= dt) <= 0){
+    const lv = owned.flame;
+    const evolved = hasEvolution('bloodFlameWheel');
+    const count = evolved ? 4 : 1 + Math.floor(lv/3);
+    for(let i=0;i<count;i++){
+      shoot('flame', angle + rand(-1.2,1.2), {
+        dmg: 5 + lv*1.2,
+        speed: 510,
+        r: evolved ? 12 : 9,
+        homing: true,
+        explode: evolved ? 72 : 38,
+        color:'#fb7185'
+      });
+    }
+    timers.flame = evolved ? .32 : Math.max(.62, 1.15 - lv*.06);
+  }
+
+  if(owned.ice && (timers.ice -= dt) <= 0){
+    const lv = owned.ice;
+    const evolved = hasEvolution('deepIceNeedle');
+    const count = evolved ? 14 : 4 + lv;
+    for(let i=0;i<count;i++){
+      const a = angle + (i - count/2) * (evolved ? .18 : .23);
+      shoot('ice', a, {
+        dmg: 2.8 + lv*.65,
+        speed: 560,
+        r: 5,
+        pierce: evolved ? 3 : 1,
+        slow: evolved ? 1.6 : .85,
+        color:'#93c5fd'
+      });
+    }
+    timers.ice = evolved ? .42 : Math.max(.75, 1.3 - lv*.06);
+  }
+
+  if(owned.array && (timers.array -= dt) <= 0){
+    const lv = owned.array;
+    const evolved = hasEvolution('yinYangArray');
+    const r = evolved ? 165 + lv*7 : 82 + lv*8;
+    addArea(player.x,player.y,r,evolved ? .62 : .35, evolved ? 6 + lv*.8 : 3 + lv*.5, 'array');
+    timers.array = evolved ? .38 : Math.max(.62, 1.15 - lv*.055);
+  }
+
+  if(owned.puppet && (timers.puppet -= dt) <= 0){
+    const lv = owned.puppet;
+    const evolved = hasEvolution('heavenPuppet');
+    const count = evolved ? 5 : 1 + Math.floor(lv/2);
+    for(let i=0;i<count;i++){
+      const offset = (Math.PI*2/count) * i + time*1.2;
+      const sx = player.x + Math.cos(offset) * (evolved ? 78 : 56);
+      const sy = player.y + Math.sin(offset) * (evolved ? 78 : 56);
+      const t = nearestBeast(sx,sy);
+      const a = t ? Math.atan2(t.y - sy, t.x - sx) : offset;
+      shoot('puppet', a, {
+        x:sx,y:sy,
+        dmg: 3 + lv*.8,
+        speed: evolved ? 710 : 590,
+        r: evolved ? 7 : 5,
+        pierce: evolved ? 2 : 0,
+        color:'#c084fc',
+        homing:false
+      });
+    }
+    timers.puppet = evolved ? .18 : Math.max(.36, .75 - lv*.05);
+  }
+
+  if(owned.poison && (timers.poison -= dt) <= 0){
+    const lv = owned.poison;
+    const evolved = hasEvolution('tenPoisonBanner');
+    const t = target || { x: player.x + rand(-160,160), y: player.y + rand(-160,160) };
+    addArea(t.x + rand(-80,80), t.y + rand(-80,80), evolved ? 115 : 72 + lv*4, evolved ? 2.8 : 1.7, evolved ? 3.6 + lv*.5 : 2 + lv*.35, 'poison');
+    timers.poison = evolved ? .48 : Math.max(.8, 1.45 - lv*.06);
+  }
+
+  if(owned.jade){
+    player.jadeCooldown -= dt;
+    if(player.shield <= 0 && player.jadeCooldown <= 0){
+      player.shield = hasEvolution('heavenGuardJade') ? 2 : 1;
+      player.jadeCooldown = Math.max(3.0, 7.5 - owned.jade*.45);
+      showSmallRing('#a7f3d0');
+    }
+  }
+}
+
+function showSmallRing(color){
+  addRing(player.x, player.y, color, 95);
+}
+
+function update(dt){
+  if(!running || paused) return;
+  time += dt;
+
+  if(time > 360 && !tribulationStarted){
+    tribulationStarted = true;
+    timers.tribulation = .2;
+    showToast('천겁 개시\n구천뇌겁');
+  }
+
+  let mx = 0;
+  let my = 0;
+  if(keys.w || keys.arrowup) my -= 1;
+  if(keys.s || keys.arrowdown) my += 1;
+  if(keys.a || keys.arrowleft) mx -= 1;
+  if(keys.d || keys.arrowright) mx += 1;
+  if(joy.dx || joy.dy){ mx = joy.dx; my = joy.dy; }
+  const m = Math.hypot(mx,my);
+  if(m > 0){
+    mx /= m; my /= m;
+    player.x += mx * player.speed * dt;
+    player.y += my * player.speed * dt;
+    player.angle = Math.atan2(my,mx);
+  }
+
+  player.inv = Math.max(0, player.inv - dt);
+  player.absorb = 175 + (passives.absorbArt ? 85 : 0);
+  cam.x = player.x + rand(-cam.shake, cam.shake);
+  cam.y = player.y + rand(-cam.shake, cam.shake);
+  cam.shake = Math.max(0, cam.shake - 34*dt);
+
+  timers.spawn -= dt;
+  if(timers.spawn <= 0){
+    const wave = Math.min(W < 700 ? 18 : 30, 4 + Math.floor(time/7) + Math.floor(realmLevel/4));
+    for(let i=0;i<wave;i++) spawnBeast(false);
+    timers.spawn = Math.max(.1, .75 - time/520);
+  }
+
+  if(time > 260 && !bossSpawned){
+    bossSpawned = true;
+    spawnBeast(true);
+    showToast('흑산요왕 출현');
+  }
+
+  if(tribulationStarted){
+    timers.tribulation -= dt;
+    if(timers.tribulation <= 0){
+      const rx = player.x + rand(-W*.42, W*.42);
+      const ry = player.y + rand(-H*.42, H*.42);
+      addArea(rx,ry,64,.5,12 + danger()*2,'tribulation');
+      addRing(rx,ry,'#c084fc',90);
+      timers.tribulation = Math.max(.28, .75 - time/900);
+    }
+  }
+
+  artifactUpdate(dt);
+
+  for(const p of projectiles){
+    if(p.homing && !p.fromEnemy){
+      const b = nearestBeast(p.x,p.y);
+      if(b){
+        const a = Math.atan2(b.y - p.y, b.x - p.x);
+        p.vx = p.vx * .86 + Math.cos(a) * 760 * .14;
+        p.vy = p.vy * .86 + Math.sin(a) * 760 * .14;
+      }
+    }
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.life -= dt;
+  }
+  projectiles = projectiles.filter(p => p.life > 0);
+
+  for(const b of beasts){
+    let a = Math.atan2(player.y - b.y, player.x - b.x);
+    let sp = b.speed;
+    if(b.slow > 0) sp *= .52;
+    if(b.bind > 0) sp *= .25;
+
+    if(b.type === 'charger'){
+      b.chargeTimer -= dt;
+      if(b.chargeTimer <= 0){ sp *= 2.8; b.chargeTimer = rand(1.2,2.3); }
+    }
+
+    if(b.type === 'demonCultivator' || b.type === 'ghost'){
+      b.shootTimer -= dt;
+      if(b.shootTimer <= 0 && distance(b.x,b.y,player.x,player.y) < 620){
+        shoot('enemy', a, { x:b.x, y:b.y, speed:310, r:7, dmg:10, color:'#ef4444', fromEnemy:true });
+        b.shootTimer = rand(1.4,2.4);
+      }
+    }
+
+    b.x += Math.cos(a) * sp * dt;
+    b.y += Math.sin(a) * sp * dt;
+    b.hit = Math.max(0, b.hit - dt);
+    b.slow = Math.max(0, b.slow - dt);
+    b.bind = Math.max(0, b.bind - dt);
+    if(b.poison > 0){
+      b.hp -= b.poison * dt * 2.2;
+      b.poison = Math.max(0, b.poison - dt*.28);
+    }
+
+    const touch = distance(b.x,b.y,player.x,player.y) < b.r + player.r;
+    if(touch && player.inv <= 0){
+      damagePlayer(b.boss ? 34 : b.elite ? 18 : 10);
+    }
+  }
+
+  for(const ar of areas){
+    ar.life -= dt;
+    if(ar.type === 'array'){
+      ar.x = player.x;
+      ar.y = player.y;
+    }
+    for(const b of beasts){
+      if(b.hp <= 0) continue;
+      const d = distance(ar.x,ar.y,b.x,b.y);
+      if(d < ar.r + b.r){
+        b.hit = .06;
+        b.hp -= ar.dmg * dt * 10;
+        if(ar.type === 'thunder') b.bind = Math.max(b.bind, .08);
+        if(ar.type === 'poison') b.poison += dt * (hasEvolution('tenPoisonBanner') ? 3.2 : 1.5);
+        if(ar.type === 'tribulation') b.hp -= ar.dmg * dt * 4;
+        if(ar.type === 'array'){
+          const aa = Math.atan2(b.y - ar.y, b.x - ar.x);
+          b.x += Math.cos(aa) * 45 * dt;
+          b.y += Math.sin(aa) * 45 * dt;
+        }
+      }
+    }
+    if(ar.type === 'tribulation' && distance(ar.x,ar.y,player.x,player.y) < ar.r + player.r && player.inv <= 0){
+      damagePlayer(18);
+    }
+  }
+  areas = areas.filter(a => a.life > 0);
+
+  for(const p of projectiles){
+    if(p.fromEnemy){
+      if(distance(p.x,p.y,player.x,player.y) < p.r + player.r && player.inv <= 0){
+        damagePlayer(p.dmg);
+        p.life = 0;
+      }
+      continue;
+    }
+
+    for(const b of beasts){
+      if(b.hp <= 0) continue;
+      if(distance(p.x,p.y,b.x,b.y) < p.r + b.r){
+        b.hp -= p.dmg;
+        b.hit = .08;
+        if(p.slow) b.slow = Math.max(b.slow, p.slow);
+        if(p.poison) b.poison += p.poison;
+        addParticle(b.x,b.y,p.color,5,150);
+        if(p.explode){
+          addArea(b.x,b.y,p.explode,.2,p.dmg*.55,'flameBoom');
+          addRing(b.x,b.y,'#fb7185',p.explode);
+        }
+        if(p.pierce > 0) p.pierce -= 1;
+        else p.life = 0;
+        break;
+      }
+    }
+  }
+
+  slashWaves = slashWaves.filter(s => {
+    s.life -= dt;
+    for(const b of beasts){
+      if(distance(s.x,s.y,b.x,b.y) < s.r + b.r){
+        b.hp -= s.dmg * dt * 12;
+        b.hit = .06;
+      }
+    }
+    return s.life > 0;
+  });
+
+  for(const b of beasts){
+    if(b.hp <= 0 && !b.dead){
+      b.dead = true;
+      kills++;
+      const orbCount = b.boss ? 45 : b.elite ? 9 : b.type === 'poisonBug' ? 1 : 2;
+      for(let i=0;i<orbCount;i++) addQiOrb(b.x + rand(-24,24), b.y + rand(-24,24), b.boss ? 3 : b.elite ? 2 : 1);
+      addParticle(b.x,b.y,b.boss?'#fb923c':b.elite?'#facc15':'#f87171',b.boss?95:18,b.boss?520:240);
+      addRing(b.x,b.y,b.boss?'#fb923c':b.elite?'#facc15':'#f87171',b.boss?210:72);
+      if(b.boss && tribulationStarted){
+        victory();
+      }
+    }
+  }
+  beasts = beasts.filter(b => !b.dead);
+
+  for(const q of qiOrbs){
+    q.spin += dt * 8;
+    const d = distance(q.x,q.y,player.x,player.y);
+    if(d < player.absorb){
+      const a = Math.atan2(player.y - q.y, player.x - q.x);
+      const pull = 420 + (player.absorb - d) * 2.4;
+      q.x += Math.cos(a) * pull * dt;
+      q.y += Math.sin(a) * pull * dt;
+    }
+    if(d < player.r + q.r + 10){
+      q.dead = true;
+      gainQi(q.value);
+    }
+  }
+  qiOrbs = qiOrbs.filter(q => !q.dead);
+
+  for(const p of particles){
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vx *= .91;
+    p.vy *= .91;
+    p.life -= dt;
+  }
+  particles = particles.filter(p => p.life > 0);
+  rings = rings.filter(r => (r.life -= dt) > 0);
+
+  updateUI();
+}
+
+function damagePlayer(dmg){
+  if(player.shield > 0){
+    player.shield -= 1;
+    player.inv = .25;
+    cam.shake = 8;
+    addParticle(player.x,player.y,'#a7f3d0',25,260);
+    addRing(player.x,player.y,'#a7f3d0',115);
+    if(hasEvolution('heavenGuardJade')){
+      player.hp = Math.min(player.maxHp, player.hp + 8);
+      addArea(player.x,player.y,105,.18,8,'shieldBoom');
+    }
+    return;
+  }
+  player.hp -= dmg;
+  player.inv = .42;
+  cam.shake = 9;
+  addParticle(player.x,player.y,'#ef4444',24,280);
+  if(player.hp <= 0){
+    running = false;
+    el.overTitle.textContent = '도행 붕괴';
+    el.result.innerHTML = `시간 ${fmt(time)}<br>경지 ${realmName()}<br>처치 ${kills}<br>위험도 ${danger()}`;
+    el.gameover.style.display = 'grid';
+  }
+}
+
+function victory(){
+  running = false;
+  el.overTitle.textContent = '비경 정복';
+  el.result.innerHTML = `흑산요왕 격파<br>천겁 돌파 성공<br>경지 ${realmName()}<br>처치 ${kills}`;
+  el.gameover.style.display = 'grid';
+}
+
+function updateUI(){
+  el.realmText.textContent = realmName();
+  el.killText.textContent = kills;
+  el.timeText.textContent = fmt(time);
+  el.qiText.textContent = `${qi}/${qiNeed}`;
+  el.dangerText.textContent = danger();
+  el.qiBar.style.width = `${clamp(qi / qiNeed * 100,0,100)}%`;
+  el.hpBar.style.width = `${clamp(player.hp / player.maxHp * 100,0,100)}%`;
+
+  const list = [];
+  for(const [key,lv] of Object.entries(owned)){
+    const d = artifactData[key];
+    list.push(`${d.icon} ${d.name} Lv.${lv}`);
+  }
+  for(const key of Object.keys(evolutions)){
+    const evo = evolutionData.find(e => e.key === key);
+    if(evo) list.push(`${evo.icon} ${evo.name}`);
+  }
+  const firstKey = Object.keys(owned)[0];
+  const first = artifactData[firstKey];
+  el.mainArtifact.textContent = first ? `${first.icon} ${first.name} Lv.${owned[firstKey]}` : '';
+  el.artifacts.innerHTML = list.join('<br>');
+}
+
+function drawBackground(){
+  const grad = ctx.createRadialGradient(W/2,H/2,80,W/2,H/2,Math.max(W,H));
+  grad.addColorStop(0,'#111827');
+  grad.addColorStop(.52,'#07111f');
+  grad.addColorStop(1,'#02030a');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0,0,W,H);
+
+  const size = 96;
+  const ox = ((-cam.x % size) + size) % size;
+  const oy = ((-cam.y % size) + size) % size;
+  ctx.strokeStyle = 'rgba(56,189,248,.13)';
+  ctx.lineWidth = 1;
+  for(let x = ox - size; x < W + size; x += size){
+    ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke();
+  }
+  for(let y = oy - size; y < H + size; y += size){
+    ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke();
+  }
+
+  ctx.strokeStyle = 'rgba(250,204,21,.06)';
+  for(let i=0;i<9;i++){
+    const x = ((i * 317 - cam.x*.18) % W + W) % W;
+    const y = ((i * 211 - cam.y*.18) % H + H) % H;
+    ctx.beginPath(); ctx.arc(x,y,42 + (i%3)*16,0,Math.PI*2); ctx.stroke();
+  }
+}
+
+function drawAreas(){
+  for(const ar of areas){
+    const p = screen(ar.x,ar.y);
+    const alpha = Math.max(.15, ar.life / ar.max * .55);
+    ctx.globalAlpha = alpha;
+    let color = '#f59e0b';
+    if(ar.type === 'thunder') color = '#7dd3fc';
+    if(ar.type === 'array') color = '#facc15';
+    if(ar.type === 'poison') color = '#22c55e';
+    if(ar.type === 'tribulation') color = '#c084fc';
+    if(ar.type === 'shieldBoom') color = '#a7f3d0';
+    if(ar.type === 'flameBoom') color = '#fb7185';
+    ctx.fillStyle = color;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 20;
+    ctx.beginPath();
+    ctx.arc(p.x,p.y,ar.r,0,Math.PI*2);
+    ctx.fill();
+    if(ar.type === 'array'){
+      ctx.strokeStyle = '#fff7ed';
+      ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.arc(p.x,p.y,ar.r*.58,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(p.x,p.y,ar.r*.28,0,Math.PI*2); ctx.stroke();
+    }
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawOrbs(){
+  for(const q of qiOrbs){
+    const p = screen(q.x,q.y);
+    ctx.save();
+    ctx.translate(p.x,p.y);
+    ctx.rotate(q.spin);
+    ctx.fillStyle = '#bef264';
+    ctx.shadowColor = '#d9f99d';
+    ctx.shadowBlur = 13;
+    ctx.beginPath();
+    ctx.moveTo(0,-10);
+    ctx.lineTo(9,0);
+    ctx.lineTo(0,10);
+    ctx.lineTo(-9,0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    ctx.shadowBlur = 0;
+  }
+}
+
+function drawProjectiles(){
+  for(const p0 of projectiles){
+    const p = screen(p0.x,p0.y);
+    ctx.save();
+    ctx.translate(p.x,p.y);
+    ctx.rotate(Math.atan2(p0.vy,p0.vx));
+    ctx.fillStyle = p0.color;
+    ctx.strokeStyle = p0.color;
+    ctx.shadowColor = p0.color;
+    ctx.shadowBlur = 14;
+    if(p0.type === 'sword'){
+      ctx.beginPath();
+      ctx.moveTo(16,0); ctx.lineTo(-8,-5); ctx.lineTo(-5,0); ctx.lineTo(-8,5); ctx.closePath(); ctx.fill();
+    }else{
+      ctx.beginPath(); ctx.arc(0,0,p0.r,0,Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
+    ctx.shadowBlur = 0;
+  }
+}
+
+function beastColor(b){
+  if(b.boss) return '#7f1d1d';
+  if(b.elite) return '#d97706';
+  if(b.type === 'poisonBug') return '#65a30d';
+  if(b.type === 'ghost') return '#6d28d9';
+  if(b.type === 'charger') return '#dc2626';
+  if(b.hit > 0) return '#fecaca';
+  return '#b91c1c';
+}
+
+function drawBeasts(){
+  for(const b of beasts){
+    const p = screen(b.x,b.y);
+    ctx.fillStyle = beastColor(b);
+    ctx.shadowColor = b.boss ? '#fb923c' : b.elite ? '#facc15' : '#ef4444';
+    ctx.shadowBlur = b.hit > 0 ? 18 : 8;
+    ctx.beginPath();
+    if(b.type === 'ghost'){
+      ctx.moveTo(p.x,p.y-b.r);
+      ctx.quadraticCurveTo(p.x+b.r,p.y-b.r*.5,p.x+b.r*.55,p.y+b.r);
+      ctx.lineTo(p.x,p.y+b.r*.45);
+      ctx.lineTo(p.x-b.r*.55,p.y+b.r);
+      ctx.quadraticCurveTo(p.x-b.r,p.y-b.r*.5,p.x,p.y-b.r);
+    }else{
+      ctx.arc(p.x,p.y,b.r,0,Math.PI*2);
+    }
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = b.slow>0 ? '#93c5fd' : b.bind>0 ? '#7dd3fc' : 'rgba(255,180,180,.72)';
+    ctx.lineWidth = b.boss ? 6 : b.elite ? 4 : 3;
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(0,0,0,.55)';
+    ctx.fillRect(p.x-b.r,p.y-b.r-12,b.r*2,4);
+    ctx.fillStyle = b.boss ? '#fb923c' : b.elite ? '#facc15' : '#f87171';
+    ctx.fillRect(p.x-b.r,p.y-b.r-12,b.r*2*clamp(b.hp/b.maxHp,0,1),4);
+  }
+}
+
+function drawParticles(){
+  for(const p0 of particles){
+    const p = screen(p0.x,p0.y);
+    ctx.globalAlpha = clamp(p0.life / p0.max, 0, 1);
+    ctx.fillStyle = p0.color;
+    ctx.shadowColor = p0.color;
+    ctx.shadowBlur = 12;
+    ctx.beginPath(); ctx.arc(p.x,p.y,p0.r,0,Math.PI*2); ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
+  }
+  for(const r of rings){
+    const p = screen(r.x,r.y);
+    const q = 1 - r.life / r.max;
+    ctx.globalAlpha = clamp(r.life / r.max,0,1);
+    ctx.strokeStyle = r.color;
+    ctx.shadowColor = r.color;
+    ctx.shadowBlur = 18;
+    ctx.lineWidth = 8 * (1-q) + 2;
+    ctx.beginPath(); ctx.arc(p.x,p.y,r.r*q,0,Math.PI*2); ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawPlayer(){
+  const p = screen(player.x,player.y);
+  const aura = ctx.createRadialGradient(p.x,p.y,5,p.x,p.y,player.shield>0?76:58);
+  aura.addColorStop(0, player.shield>0 ? 'rgba(167,243,208,.52)' : 'rgba(168,85,247,.45)');
+  aura.addColorStop(1, 'rgba(168,85,247,0)');
+  ctx.fillStyle = aura;
+  ctx.beginPath(); ctx.arc(p.x,p.y,player.shield>0?76:58,0,Math.PI*2); ctx.fill();
+
+  ctx.save();
+  ctx.translate(p.x,p.y);
+  ctx.rotate(player.angle);
+  ctx.shadowColor = player.inv>0 ? '#fef3c7' : '#c084fc';
+  ctx.shadowBlur = 22;
+  ctx.fillStyle = player.inv>0 ? '#fef3c7' : '#5b21b6';
+  ctx.strokeStyle = '#e9d5ff';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(28,0);
+  ctx.lineTo(-15,-14);
+  ctx.lineTo(-7,0);
+  ctx.lineTo(-15,14);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+  ctx.shadowBlur = 0;
+}
+
+function drawJoystick(){
+  ctx.save();
+  ctx.globalAlpha = .95;
+  ctx.fillStyle = 'rgba(14,165,233,.12)';
+  ctx.beginPath(); ctx.arc(joy.baseX,joy.baseY,joy.radius+20,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle = 'rgba(125,211,252,.85)';
+  ctx.lineWidth = 5;
+  ctx.beginPath(); ctx.arc(joy.baseX,joy.baseY,joy.radius,0,Math.PI*2); ctx.stroke();
+  ctx.fillStyle = joy.active ? 'rgba(186,230,253,.76)' : 'rgba(186,230,253,.42)';
+  ctx.beginPath(); ctx.arc(joy.x,joy.y,joy.knob,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,.9)';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,.9)';
+  ctx.font = '900 12px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText('이동', joy.baseX, joy.baseY+5);
+  ctx.restore();
+}
+
+function drawTribulationOverlay(){
+  if(!tribulationStarted) return;
+  ctx.save();
+  ctx.globalAlpha = .18 + Math.sin(time*8)*.04;
+  ctx.fillStyle = '#581c87';
+  ctx.fillRect(0,0,W,H);
+  ctx.restore();
+}
+
+function draw(){
+  drawBackground();
+  drawTribulationOverlay();
+  drawAreas();
+  drawOrbs();
+  drawProjectiles();
+  drawBeasts();
+  drawParticles();
+  drawPlayer();
+  drawJoystick();
+}
+
+function loop(now){
+  const dt = Math.min(.033, (now - last) / 1000);
+  last = now;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+function moveJoystick(px,py){
+  let dx = px - joy.baseX;
+  let dy = py - joy.baseY;
+  const d = Math.hypot(dx,dy);
+  if(d > joy.radius){
+    dx = dx / d * joy.radius;
+    dy = dy / d * joy.radius;
+  }
+  joy.dx = dx / joy.radius;
+  joy.dy = dy / joy.radius;
+  joy.x = joy.baseX + dx;
+  joy.y = joy.baseY + dy;
+}
+
+function releaseJoystick(){
+  joy.active = false;
+  joy.id = null;
+  joy.dx = 0;
+  joy.dy = 0;
+  joy.x = joy.baseX;
+  joy.y = joy.baseY;
+}
+
+window.addEventListener('resize', resize);
+window.addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; });
+window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+
+canvas.addEventListener('pointerdown', e => {
+  joy.active = true;
+  joy.id = e.pointerId;
+  canvas.setPointerCapture(e.pointerId);
+  moveJoystick(e.clientX,e.clientY);
+});
+canvas.addEventListener('pointermove', e => {
+  if(joy.active && e.pointerId === joy.id) moveJoystick(e.clientX,e.clientY);
+});
+canvas.addEventListener('pointerup', e => {
+  if(e.pointerId === joy.id) releaseJoystick();
+});
+canvas.addEventListener('pointercancel', releaseJoystick);
+
+el.startBtn.addEventListener('click', startGame);
+el.restartBtn.addEventListener('click', startGame);
+el.choices.addEventListener('click', e => {
+  const btn = e.target.closest('[data-pick]');
+  if(!btn) return;
+  pickLevel(Number(btn.dataset.pick));
+});
+
+resize();
+resetGame();
+el.menu.style.display = 'grid';
+requestAnimationFrame(loop);
+})();
+</script></body>
+  </html>
